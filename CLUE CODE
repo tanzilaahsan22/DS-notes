@@ -1,0 +1,99 @@
+# ============================================
+# DATA SCIENCE CHEAT SHEET
+# ============================================
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import precision_score, recall_score, accuracy_score
+
+# ============================================
+# SVD
+# ============================================
+def do_svd(X):
+    X_centered = X - np.mean(X, axis=0)
+    U, S, VT = np.linalg.svd(X_centered, full_matrices=False)
+    return U, S, VT
+
+def explained_variance(S, threshold=0.95):
+    cum_var = np.cumsum(S**2 / np.sum(S**2))
+    k = np.argmax(cum_var >= threshold) + 1
+    return cum_var, k
+
+def rank_k_approx(U, S, VT, k):
+    return U[:,:k] @ np.diag(S[:k]) @ VT[:k,:]
+
+def reconstruction_error(X, X_approx):
+    return np.linalg.norm(X - X_approx, axis=1)
+
+# ============================================
+# MARKOV CHAINS
+# ============================================
+def build_transition_matrix(csv_path, states):
+    df = pd.read_csv(csv_path)
+    counts = pd.crosstab(df['from_zone'], df['to_zone']).reindex(
+        index=states, columns=states, fill_value=0
+    )
+    return counts.to_numpy() / counts.sum(axis=1, keepdims=True)
+
+def stationary_distribution(P):
+    evals, evecs = np.linalg.eig(P.T)
+    idx = np.argmin(np.abs(evals - 1))
+    pi = np.real(evecs[:, idx])
+    return pi / np.sum(pi)
+
+def hitting_time(P, target):
+    n = len(P)
+    idx = [i for i in range(n) if i != target]
+    Q = P[np.ix_(idx, idx)]
+    E = np.linalg.solve(np.eye(len(idx)) - Q, np.ones(len(idx)))
+    full = np.zeros(n)
+    for i, j in enumerate(idx):
+        full[j] = E[i]
+    return full
+
+# Absorbing chain
+def absorbing_chain(P, transient, absorbing):
+    Q = P[np.ix_(transient, transient)]
+    r = P[np.ix_(transient, absorbing)]
+    I = np.eye(len(transient))
+    h = np.linalg.solve(I - Q, r.sum(axis=1))
+    t = np.linalg.solve(I - Q, np.ones(len(transient)))
+    pi = np.zeros(len(P))
+    pi[absorbing] = 1.0 / len(absorbing)
+    return h, t, pi
+
+# ============================================
+# COST FUNCTIONS
+# ============================================
+def cost(y_true, y_proba, threshold, costs):
+    # costs = (TP, FN, FP) 
+    y_pred = (y_proba >= threshold).astype(int)
+    total = 0
+    for i in range(len(y_true)):
+        if y_true[i] == 1 and y_pred[i] == 1:
+            total += costs[0]
+        elif y_true[i] == 1 and y_pred[i] == 0:
+            total += costs[1]
+        elif y_true[i] == 0 and y_pred[i] == 1:
+            total += costs[2]
+    return total / len(y_true)
+
+def hoeffding(n, b, alpha=0.05):
+    return b * np.sqrt(-np.log(alpha/2) / (2*n))
+
+# ============================================
+# LINEAR REGRESSION
+# ============================================
+def standardize(X_train, X_test):
+    mean = np.mean(X_train, axis=0)
+    std = np.std(X_train, axis=0)
+    return (X_train - mean)/std, (X_test - mean)/std, mean, std
+
+def regression_metrics(y_test, y_pred, y_train):
+    mse = np.mean((y_test - y_pred)**2)
+    mae = np.mean(np.abs(y_test - y_pred))
+    r2 = 1 - np.sum((y_test - y_pred)**2) / np.sum((y_test - np.mean(y_test))**2)
+    baseline = np.mean((y_test - np.mean(y_train))**2)
+    return mse, mae, r2, baseline
